@@ -7,15 +7,27 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"unicode"
 
 	"gopkg.in/yaml.v2"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type secret map[string]interface{}
 
+type items struct {
+    Items   []secret `yaml:"items"`
+}
+
 type decodedSecret struct {
 	Key   string
-	Value string
+	Value interface{}
+}
+
+type decodedJwt struct {
+	Header interface{}
+	Payload interface{}
+	Signature string
 }
 
 var version string
@@ -46,7 +58,7 @@ func main() {
 	_, _ = fmt.Fprint(os.Stdout, string(output))
 }
 
-func cast(data interface{}, isJSON bool) (map[string]interface{}, bool) {
+func cast(data interface{}, isJSON bool) (secret, bool) {
 	if isJSON {
 		d, ok := data.(map[string]interface{})
 		return d, ok
@@ -66,18 +78,29 @@ func cast(data interface{}, isJSON bool) (map[string]interface{}, bool) {
 func parse(in []byte) ([]byte, error) {
 	isJSON := isJSONString(in)
 
+	var it items
+	if err := unmarshal(in, &it, isJSON); err == nil && len(it.Items) > 0 {
+		for i := 0; i < len(it.Items); i++ {
+			decodeItem(&it.Items[i], isJSON)
+		}
+		return marshal(it, isJSON)
+	}
+
 	var s secret
 	if err := unmarshal(in, &s, isJSON); err != nil {
 		return nil, err
 	}
-
-	data, ok := cast(s["data"], isJSON)
-	if !ok || len(data) == 0 {
-		return in, nil
-	}
-	s["stringData"] = decode(data)
-	delete(s, "data")
+	decodeItem(&s, isJSON)
 	return marshal(s, isJSON)
+}
+
+func decodeItem(item *secret, isJSON bool) bool {
+	data, ok := cast((*item)["data"], isJSON)
+	if !ok || len(data) == 0 {
+		return false
+	}
+	(*item)["data"] = decode(data)
+	return true
 }
 
 func read(rd io.Reader) []byte {
@@ -107,21 +130,38 @@ func marshal(d interface{}, asJSON bool) ([]byte, error) {
 	return yaml.Marshal(d)
 }
 
+func isAsciiPrintable(s string) bool {
+    for _, r := range s {
+        if r > unicode.MaxASCII || (!unicode.IsPrint(r) && !unicode.IsSpace(r)) {
+            return false
+        }
+    }
+    return true
+}
+
 func decodeSecret(key, secret string, secrets chan decodedSecret) {
-	var value string
+	value := secret
 	// avoid wrong encoded secrets
-	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil {
+	if decoded, err := base64.StdEncoding.DecodeString(secret); err == nil && isAsciiPrintable(string(decoded)) {
 		value = string(decoded)
+
+		var claims jwt.MapClaims
+		parser := jwt.NewParser()
+		token, _, err := parser.ParseUnverified(value, &claims)
+		if err == nil {
+			valuej := decodedJwt{Header: token.Header, Payload: token.Claims, Signature: string(token.Signature)}
+			secrets <- decodedSecret{Key: key, Value: valuej}
+			return
+		}
 	} else {
-		value = secret
 	}
 	secrets <- decodedSecret{Key: key, Value: value}
 }
 
-func decode(data map[string]interface{}) map[string]string {
+func decode(data map[string]interface{}) map[string]interface{} {
 	length := len(data)
 	secrets := make(chan decodedSecret, length)
-	decoded := make(map[string]string, length)
+	decoded := make(map[string]interface{}, length)
 	for key, encoded := range data {
 		go decodeSecret(key, encoded.(string), secrets)
 	}
