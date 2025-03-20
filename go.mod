@@ -1,4 +1,4 @@
-module github.com/mfuentesg/ksd
+module github.com/TrebledJ/ksd
 
 go 1.14
 

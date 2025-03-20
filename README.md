@@ -1,6 +1,7 @@
 # Kubernetes secret decoder a.k.a `ksd`
 
-
+Original Project: https://github.com/mfuentesg/ksd
+<!--
 ![Travis](https://img.shields.io/travis/mfuentesg/ksd.svg)
 [![codecov](https://codecov.io/gh/mfuentesg/ksd/branch/master/graph/badge.svg)](https://codecov.io/gh/mfuentesg/ksd)
 
@@ -10,6 +11,7 @@
 
 <br />
 <br />
+-->
 
 `ksd` is a tool, whose aim is help you to visualize in text plain your kubernetes secrets, either `yaml` or `json` outputs.
 
@@ -17,14 +19,16 @@
 
 ### Go
 ```bash
-$ go get github.com/mfuentesg/ksd
+$ go install github.com/TrebledJ/ksd
 ```
 
+<!--
 ### Brew
 
 ```
 brew install mfuentesg/tap/ksd
 ```
+-->
 
 ## Usage
 
